@@ -4,7 +4,21 @@ import datetime
 import sqlite3
 import logging
 import os
+from flask import Flask
+import threading
 
+# Заглушка для Render
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Bot is running!"
+
+def run_flask():
+    app.run(host='0.0.0.0', port=10000)
+
+# Запускаем заглушку в отдельном потоке
+threading.Thread(target=run_flask, daemon=True).start()
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
