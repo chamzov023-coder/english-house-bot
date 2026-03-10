@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 # Настройки
 # =========================
 
-BOT_TOKEN = os.getenv("8629886155:AAF8POnHhqZLnSMLNi0dysRj3qPe7hH2whQ")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_CHAT_ID = 823680495
 
 if not BOT_TOKEN:
