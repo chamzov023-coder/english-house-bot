@@ -1,13 +1,15 @@
 import telebot
 from telebot import types
-import datetime
 import sqlite3
 import logging
 import os
 from flask import Flask
 import threading
 
-# Заглушка для Render
+# =========================
+# Flask (для Render)
+# =========================
+
 app = Flask(__name__)
 
 @app.route('/')
@@ -15,331 +17,455 @@ def home():
     return "Bot is running!"
 
 def run_flask():
-    app.run(host='0.0.0.0', port=10000)
+    app.run(host="0.0.0.0", port=10000, debug=False, use_reloader=False)
 
-# Запускаем заглушку в отдельном потоке
-threading.Thread(target=run_flask, daemon=True).start()
-# Настройка логирования
+# =========================
+# Логи
+# =========================
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# === ВАШИ ДАННЫЕ ===
-BOT_TOKEN = '8629886155:AAFEChuATmoGh5UuxCvxpBlNUl1kOwfwAbk'
+# =========================
+# Настройки
+# =========================
+
+BOT_TOKEN = os.getenv("8629886155:AAF8POnHhqZLnSMLNi0dysRj3qPe7hH2whQ")
 ADMIN_CHAT_ID = 823680495
 
-if BOT_TOKEN == 'YOUR_BOT_TOKEN':
-    logger.error("❌ Токен бота не указан!")
+if not BOT_TOKEN:
+    print("❌ BOT_TOKEN не найден")
     exit()
 
-# Инициализация бота
 bot = telebot.TeleBot(BOT_TOKEN)
 
+# =========================
+# База данных
+# =========================
 
-# === БАЗА ДАННЫХ ===
-def init_database():
-    try:
-        conn = sqlite3.connect('english_house.db')
-        cursor = conn.cursor()
+def init_db():
 
-        cursor.execute("DROP TABLE IF EXISTS applications")
+    conn = sqlite3.connect("english_house.db")
+    cursor = conn.cursor()
 
-        cursor.execute('''
-                       CREATE TABLE applications
-                       (
-                           id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                           user_id     INTEGER,
-                           username    TEXT,
-                           client_name TEXT,
-                           phone       TEXT,
-                           age_group   TEXT,
-                           program     TEXT,
-                           schedule    TEXT,
-                           status      TEXT      DEFAULT 'новая',
-                           created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                       )
-                       ''')
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS applications(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        username TEXT,
+        client_name TEXT,
+        phone TEXT,
+        age_group TEXT,
+        program TEXT,
+        schedule TEXT,
+        status TEXT DEFAULT 'новая',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
 
-        conn.commit()
-        conn.close()
-        logger.info("✅ База данных успешно создана!")
-    except Exception as e:
-        logger.error(f"❌ Ошибка БД: {e}")
+    conn.commit()
+    conn.close()
 
+init_db()
 
-init_database()
+# =========================
+# Данные школы
+# =========================
 
-# === ДАННЫЕ ШКОЛЫ ===
 SCHOOL_INFO = {
-    'phone': '+7 (939) 489-80-33',
-    'address': 'г. Кызыл, ТД Континент, ул. Лопсанчапа, д. 35, 56 кабинет',
-    'working_hours': '08:00 - 21:00',
-    'instagram': 'english_home17',
+    "phone": "+7 (939) 489-80-33",
+    "address": "г. Кызыл, ТД Континент",
+    "working_hours": "08:00 - 21:00",
+    "instagram": "english_home17"
 }
 
-# === ВОЗРАСТНЫЕ ГРУППЫ ===
 AGE_GROUPS = {
-    'kids_3_4': '👶 Дети 3-4 лет',
-    'kids_6_7': '🧒 Дети 6-7 лет',
-    'teens_14_15': '👦 Подростки 14-15 лет',
-    'adults': '👨‍🎓 Взрослые'
+    "kids_3_4": "👶 Дети 3-4 лет",
+    "kids_6_7": "🧒 Дети 6-7 лет",
+    "teens": "👦 Подростки 14-15 лет",
+    "adults": "👨‍🎓 Взрослые"
 }
 
-# === ПРОГРАММЫ (ТОЛЬКО ПО ОДНОЙ ДЛЯ КАЖДОЙ ГРУППЫ) ===
 PROGRAMS = {
-    'kids_3_4': '🇬🇧 0 ступень - Я умею петь / I can sing Games',
-    'kids_6_7': '🇬🇧 1 ступень - Я умею говорить / I can speak',
-    'teens_14_15': '🇬🇧 Английский для подростков',
-    'adults': '🇬🇧 Английский для взрослых'
+    "kids_3_4": "🇬🇧 I can sing",
+    "kids_6_7": "🇬🇧 I can speak",
+    "teens": "🇬🇧 Английский для подростков",
+    "adults": "🇬🇧 Английский для взрослых"
 }
 
-# === РАСПИСАНИЕ (ОДНО ДЛЯ КАЖДОЙ ГРУППЫ) ===
 SCHEDULES = {
-    'kids_3_4': '📅 ПН, СР, ЧТ с 08:30 до 15:15 (3 раза в неделю)',
-    'kids_6_7': '📅 ПН, СР, ЧТ с 08:30 до 15:15 (3 раза в неделю)',
-    'teens_14_15': '📅 ПН, СР, ЧТ с 08:30 до 15:15 (3 раза в неделю)',
-    'adults': '📅 СБ с 13:00 до 15:00 (суббота)',
+    "kids_3_4": "ПН СР ЧТ 08:30",
+    "kids_6_7": "ПН СР ЧТ 08:30",
+    "teens": "ПН СР ЧТ 15:00",
+    "adults": "СБ 13:00"
 }
 
-# Временное хранилище
+# =========================
+# Временные данные пользователей
+# =========================
+
 user_data = {}
 
+# =========================
+# Сохранение заявки
+# =========================
 
-# === СОХРАНЕНИЕ ЗАЯВКИ ===
 def save_application(user_id, data):
-    try:
-        conn = sqlite3.connect('english_house.db')
-        cursor = conn.cursor()
-        cursor.execute('''
-                       INSERT INTO applications
-                       (user_id, username, client_name, phone, age_group, program, schedule, status)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                       ''', (
-                           user_id,
-                           data.get('username', ''),
-                           data.get('client_name', ''),
-                           data.get('phone', ''),
-                           data.get('age_group', ''),
-                           data.get('program', ''),
-                           data.get('schedule', ''),
-                           'новая'
-                       ))
-        conn.commit()
-        app_id = cursor.lastrowid
-        conn.close()
-        return app_id
-    except Exception as e:
-        logger.error(f"❌ Ошибка сохранения: {e}")
-        return None
 
+    conn = sqlite3.connect("english_house.db")
+    cursor = conn.cursor()
 
-# === УВЕДОМЛЕНИЕ АДМИНУ ===
-def notify_admin(app_id, data):
-    try:
-        msg = f"""🔔 НОВАЯ ЗАЯВКА #{app_id}
+    cursor.execute("""
+    INSERT INTO applications
+    (user_id,username,client_name,phone,age_group,program,schedule)
+    VALUES (?,?,?,?,?,?,?)
+    """,(
+        user_id,
+        data.get("username"),
+        data.get("client_name"),
+        data.get("phone"),
+        data.get("age_group"),
+        data.get("program"),
+        data.get("schedule")
+    ))
 
-👤 Имя: {data.get('client_name')}
-📞 Телефон: {data.get('phone')}
-👥 Возраст: {data.get('age_group')}
-📚 Программа: {data.get('program')}
-📅 Расписание: {data.get('schedule')}
-🆔 @{data.get('username', 'нет')}"""
-        bot.send_message(ADMIN_CHAT_ID, msg)
-    except Exception as e:
-        logger.error(f"❌ Ошибка уведомления: {e}")
+    conn.commit()
+    app_id = cursor.lastrowid
+    conn.close()
 
+    return app_id
 
-# === КОМАНДА /start ===
-@bot.message_handler(commands=['start'])
-def start_command(message):
-    try:
-        user_name = message.from_user.first_name
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-        markup.add(
-            types.KeyboardButton('📝 Записаться'),
-            types.KeyboardButton('👥 Программы'),
-            types.KeyboardButton('📞 Контакты'),
-            types.KeyboardButton('ℹ️ О школе')
-        )
+# =========================
+# Обновление статуса
+# =========================
 
-        text = f"""🏠 English House 🏠
+def update_status(app_id, status):
 
-Привет, {user_name}!
-Я помогу записаться на пробный урок.
+    conn = sqlite3.connect("english_house.db")
+    cursor = conn.cursor()
 
-Выберите действие в меню 👇"""
-        bot.send_message(message.chat.id, text, reply_markup=markup)
-    except Exception as e:
-        logger.error(f"❌ Ошибка: {e}")
+    cursor.execute("""
+    UPDATE applications
+    SET status = ?
+    WHERE id = ?
+    """,(status,app_id))
 
+    conn.commit()
+    conn.close()
 
-# === ОБРАБОТЧИК ТЕКСТА ===
-@bot.message_handler(func=lambda message: True)
-def handle_text(message):
-    text = message.text
-    chat_id = message.chat.id
+# =========================
+# Уведомление админу
+# =========================
 
-    if text == '📝 Записаться':
-        user_data[chat_id] = {'state': 'waiting_name'}
-        bot.send_message(chat_id, "Как вас зовут?")
+def notify_admin(app_id,data):
 
-    elif text == '👥 Программы':
-        show_programs(message)
+    text=f"""
+🔔 НОВАЯ ЗАЯВКА #{app_id}
 
-    elif text == '📞 Контакты':
-        contacts = f"""📞 КОНТАКТЫ:
+👤 {data['client_name']}
+📞 {data['phone']}
 
-🏫 Адрес: {SCHOOL_INFO['address']}
-📱 Телефон: {SCHOOL_INFO['phone']}
-🕐 Часы работы: {SCHOOL_INFO['working_hours']}
-📷 Instagram: @{SCHOOL_INFO['instagram']}
+👥 {data['age_group']}
+📚 {data['program']}
+📅 {data['schedule']}
 
-💬 Мы на связи!"""
-        bot.send_message(chat_id, contacts)
+@{data['username']}
+"""
 
-    elif text == 'ℹ️ О школе':
-        about = """🏠 О школе English House
+    bot.send_message(ADMIN_CHAT_ID,text)
 
-Мы помогаем выучить английский с 2015 года!
+# =========================
+# Главное меню
+# =========================
 
-✅ Опытные преподаватели
-✅ Небольшие группы (до 10 чел)
-✅ Разговорные клубы
-✅ Подготовка к экзаменам
-
-Приходите на бесплатный пробный урок!"""
-        bot.send_message(chat_id, about)
-
-    elif text == '⬅️ Назад':
-        start_command(message)
-
-    else:
-        if chat_id in user_data:
-            state = user_data[chat_id].get('state')
-
-            if state == 'waiting_name':
-                user_data[chat_id]['client_name'] = text
-                user_data[chat_id]['username'] = message.from_user.username
-                user_data[chat_id]['state'] = 'waiting_phone'
-                bot.send_message(chat_id, "📞 Введите ваш номер телефона:")
-
-            elif state == 'waiting_phone':
-                phone = text.strip()
-                if phone.startswith('+7') or phone.startswith('8') or phone.startswith('9'):
-                    user_data[chat_id]['phone'] = phone
-                    user_data[chat_id]['state'] = 'choosing_age'
-
-                    markup = types.InlineKeyboardMarkup(row_width=1)
-                    for age_id, age_name in AGE_GROUPS.items():
-                        markup.add(types.InlineKeyboardButton(age_name, callback_data=f"age_{age_id}"))
-
-                    bot.send_message(chat_id, "👥 Выберите возрастную группу:", reply_markup=markup)
-                else:
-                    bot.send_message(chat_id, "❌ Неверный формат. Введите: +7 999 123 45 67")
-        else:
-            bot.send_message(chat_id, "Используйте кнопки меню 👆")
-
-
-# === ПОКАЗ ПРОГРАММ ===
-def show_programs(message):
-    text = "👥 ПРОГРАММЫ ОБУЧЕНИЯ:\n\n"
-    for age_id, age_name in AGE_GROUPS.items():
-        text += f"{age_name}\n"
-        text += f"  • {PROGRAMS[age_id]}\n\n"
+def main_menu():
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add(types.KeyboardButton('⬅️ Назад'))
-    bot.send_message(message.chat.id, text, reply_markup=markup)
 
+    markup.add("📝 Записаться","👥 Программы")
+    markup.add("📞 Контакты","ℹ️ О школе")
 
-# === ОБРАБОТЧИК ИНЛАЙН КНОПОК ===
-@bot.callback_query_handler(func=lambda call: True)
-def handle_callback(call):
-    chat_id = call.message.chat.id
-    msg_id = call.message.message_id
+    return markup
+
+# =========================
+# START
+# =========================
+
+@bot.message_handler(commands=["start"])
+def start(message):
+
+    text=f"""
+🏫 English House
+
+Привет {message.from_user.first_name}!
+
+Я помогу записаться
+на пробный урок.
+"""
+
+    bot.send_message(message.chat.id,text,reply_markup=main_menu())
+
+# =========================
+# Текстовые сообщения
+# =========================
+
+@bot.message_handler(func=lambda m:True)
+def text(message):
+
+    chat_id=message.chat.id
+    msg=message.text
+
+    if msg=="📝 Записаться":
+
+        user_data[chat_id]={"state":"name"}
+        bot.send_message(chat_id,"Как вас зовут?")
+
+    elif msg=="👥 Программы":
+
+        text="📚 Наши программы:\n\n"
+
+        for age in AGE_GROUPS:
+            text+=f"{AGE_GROUPS[age]}\n"
+            text+=f"{PROGRAMS[age]}\n\n"
+
+        bot.send_message(chat_id,text)
+
+    elif msg=="📞 Контакты":
+
+        text=f"""
+📍 {SCHOOL_INFO["address"]}
+
+📞 {SCHOOL_INFO["phone"]}
+
+🕒 {SCHOOL_INFO["working_hours"]}
+
+📷 @{SCHOOL_INFO["instagram"]}
+"""
+
+        bot.send_message(chat_id,text)
+
+    elif msg=="ℹ️ О школе":
+
+        bot.send_message(chat_id,"Школа английского языка с 2015 года")
+
+    else:
+
+        if chat_id in user_data:
+
+            state=user_data[chat_id]["state"]
+
+            if state=="name":
+
+                user_data[chat_id]["client_name"]=msg
+                user_data[chat_id]["username"]=message.from_user.username
+                user_data[chat_id]["state"]="phone"
+
+                bot.send_message(chat_id,"Введите номер телефона")
+
+            elif state=="phone":
+
+                user_data[chat_id]["phone"]=msg
+
+                markup=types.InlineKeyboardMarkup()
+
+                for age in AGE_GROUPS:
+
+                    markup.add(
+                        types.InlineKeyboardButton(
+                            AGE_GROUPS[age],
+                            callback_data=age
+                        )
+                    )
+
+                bot.send_message(chat_id,"Выберите возрастную группу",reply_markup=markup)
+
+# =========================
+# Callback кнопки
+# =========================
+
+@bot.callback_query_handler(func=lambda call:True)
+def callback(call):
+
+    chat_id=call.message.chat.id
+    data=call.data
+
+    if data in AGE_GROUPS:
+
+        user_data[chat_id]["age_group"]=AGE_GROUPS[data]
+        user_data[chat_id]["program"]=PROGRAMS[data]
+        user_data[chat_id]["schedule"]=SCHEDULES[data]
+
+        app_id=save_application(chat_id,user_data[chat_id])
+
+        notify_admin(app_id,user_data[chat_id])
+
+        bot.edit_message_text(
+        f"""
+✅ Заявка #{app_id} отправлена!
+
+Мы скоро свяжемся с вами.
+""",
+        chat_id,
+        call.message.message_id
+        )
+
+    elif data.startswith("call_"):
+
+        app_id=data.split("_")[1]
+        update_status(app_id,"позвонили")
+        bot.answer_callback_query(call.id,"Статус: позвонили")
+
+    elif data.startswith("ok_"):
+
+        app_id=data.split("_")[1]
+        update_status(app_id,"записан")
+        bot.answer_callback_query(call.id,"Статус: записан")
+
+    elif data.startswith("cancel_"):
+
+        app_id=data.split("_")[1]
+        update_status(app_id,"отказ")
+        bot.answer_callback_query(call.id,"Статус: отказ")
+
+# =========================
+# Админ — последние заявки
+# =========================
+
+@bot.message_handler(commands=["apps"])
+def apps(message):
+
+    if message.chat.id!=ADMIN_CHAT_ID:
+        return
+
+    conn=sqlite3.connect("english_house.db")
+    cursor=conn.cursor()
+
+    cursor.execute("""
+    SELECT id,client_name,phone,status
+    FROM applications
+    ORDER BY id DESC
+    LIMIT 10
+    """)
+
+    rows=cursor.fetchall()
+    conn.close()
+
+    text="📋 Последние заявки\n\n"
+
+    for r in rows:
+
+        text+=f"""
+#{r[0]}
+
+👤 {r[1]}
+📞 {r[2]}
+
+Статус: {r[3]}
+"""
+
+    bot.send_message(message.chat.id,text)
+
+# =========================
+# Админ — открыть заявку
+# =========================
+
+@bot.message_handler(commands=["app"])
+def open_app(message):
+
+    if message.chat.id!=ADMIN_CHAT_ID:
+        return
 
     try:
-        if call.data.startswith('age_'):
-            age_id = call.data.replace('age_', '')
-            if age_id in AGE_GROUPS:
-                user_data[chat_id]['age_group'] = AGE_GROUPS[age_id]
-                user_data[chat_id]['program'] = PROGRAMS[age_id]
-                user_data[chat_id]['schedule'] = SCHEDULES[age_id]
+        app_id=message.text.split()[1]
+    except:
+        bot.send_message(message.chat.id,"Например: /app 5")
+        return
 
-                # Сразу показываем подтверждение с выбранными данными
-                confirm_text = f"""📝 Подтвердите запись:
+    conn=sqlite3.connect("english_house.db")
+    cursor=conn.cursor()
 
-👥 Группа: {AGE_GROUPS[age_id]}
-📚 Программа: {PROGRAMS[age_id]}
-📅 Расписание: {SCHEDULES[age_id]}
+    cursor.execute("SELECT * FROM applications WHERE id=?",(app_id,))
+    app_data=cursor.fetchone()
 
-Всё верно?"""
+    conn.close()
 
-                markup = types.InlineKeyboardMarkup(row_width=2)
-                markup.add(
-                    types.InlineKeyboardButton("✅ Да, всё верно", callback_data=f"confirm_{age_id}"),
-                    types.InlineKeyboardButton("❌ Отмена", callback_data="cancel")
-                )
+    if not app_data:
+        bot.send_message(message.chat.id,"Заявка не найдена")
+        return
 
-                bot.edit_message_text(confirm_text, chat_id, msg_id, reply_markup=markup)
+    text=f"""
+📋 Заявка #{app_data[0]}
 
-        elif call.data.startswith('confirm_'):
-            age_id = call.data.replace('confirm_', '')
+👤 {app_data[3]}
+📞 {app_data[4]}
 
-            app_id = save_application(chat_id, user_data[chat_id])
+👥 {app_data[5]}
+📚 {app_data[6]}
+📅 {app_data[7]}
 
-            if app_id:
-                bot.edit_message_text(
-                    f"✅ Заявка #{app_id} создана!\n\n"
-                    f"👥 Группа: {user_data[chat_id]['age_group']}\n"
-                    f"📚 Программа: {user_data[chat_id]['program']}\n"
-                    f"📅 Расписание: {user_data[chat_id]['schedule']}\n\n"
-                    f"Скоро мы свяжемся с вами для подтверждения!",
-                    chat_id,
-                    msg_id
-                )
-                notify_admin(app_id, user_data[chat_id])
-                del user_data[chat_id]
-            else:
-                bot.edit_message_text("❌ Ошибка. Попробуйте позже.", chat_id, msg_id)
+Статус: {app_data[8]}
+"""
 
-        elif call.data == "cancel":
-            bot.edit_message_text("❌ Отменено", chat_id, msg_id)
-            if chat_id in user_data:
-                del user_data[chat_id]
+    markup=types.InlineKeyboardMarkup()
 
-    except Exception as e:
-        logger.error(f"❌ Ошибка в callback: {e}")
-        bot.send_message(chat_id, "Произошла ошибка. Попробуйте снова.")
+    markup.add(
+        types.InlineKeyboardButton("📞 Позвонили",callback_data=f"call_{app_id}"),
+        types.InlineKeyboardButton("✅ Записан",callback_data=f"ok_{app_id}")
+    )
 
+    markup.add(
+        types.InlineKeyboardButton("❌ Отказ",callback_data=f"cancel_{app_id}")
+    )
 
-# === КОМАНДА ДЛЯ ПРОСМОТРА ЗАЯВОК ===
-@bot.message_handler(commands=['apps'])
-def show_apps(message):
-    if message.chat.id == ADMIN_CHAT_ID:
-        conn = sqlite3.connect('english_house.db')
-        cursor = conn.cursor()
-        cursor.execute('SELECT * FROM applications ORDER BY created_at DESC LIMIT 10')
-        apps = cursor.fetchall()
-        conn.close()
+    bot.send_message(message.chat.id,text,reply_markup=markup)
 
-        if apps:
-            text = "📊 ПОСЛЕДНИЕ ЗАЯВКИ:\n\n"
-            for app in apps:
-                text += f"#{app[0]} - {app[8]}\n"
-                text += f"👤 {app[3]} | 📞 {app[4]}\n"
-                text += f"👥 {app[5]}\n"
-                text += f"📚 {app[6]}\n"
-                text += f"📅 {app[7]}\n\n"
-            bot.send_message(message.chat.id, text)
-        else:
-            bot.send_message(message.chat.id, "📭 Заявок пока нет")
-    else:
-        bot.send_message(message.chat.id, "❌ Нет прав")
+# =========================
+# Статистика
+# =========================
 
+@bot.message_handler(commands=["stats"])
+def stats(message):
 
-# === ЗАПУСК ===
-if __name__ == '__main__':
-    print("🚀 Бот English House запущен...")
-    print("✅ Нажмите Ctrl+C для остановки")
-    bot.infinity_polling()
+    if message.chat.id!=ADMIN_CHAT_ID:
+        return
 
+    conn=sqlite3.connect("english_house.db")
+    cursor=conn.cursor()
+
+    cursor.execute("SELECT COUNT(*) FROM applications")
+    total=cursor.fetchone()[0]
+
+    cursor.execute("""
+    SELECT COUNT(*)
+    FROM applications
+    WHERE date(created_at)=date('now')
+    """)
+    today=cursor.fetchone()[0]
+
+    conn.close()
+
+    bot.send_message(message.chat.id,f"""
+📊 Статистика
+
+Сегодня заявок: {today}
+
+Всего заявок: {total}
+""")
+
+# =========================
+# Запуск
+# =========================
+
+if __name__=="__main__":
+
+    print("🚀 Bot started")
+
+    flask_thread=threading.Thread(target=run_flask)
+    flask_thread.start()
+
+    bot.infinity_polling(
+        timeout=20,
+        long_polling_timeout=10,
+        none_stop=True,
+        skip_pending=True
+    )
