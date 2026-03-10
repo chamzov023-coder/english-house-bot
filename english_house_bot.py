@@ -24,10 +24,10 @@ logger = logging.getLogger(__name__)
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_CHAT_ID = 823680495
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # Например: https://english-house-bot.onrender.com/
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # Например: https://english-house-bot.onrender.com/webhook
 
-if not BOT_TOKEN:
-    print("❌ BOT_TOKEN не найден")
+if not BOT_TOKEN or not WEBHOOK_URL:
+    print("❌ BOT_TOKEN или WEBHOOK_URL не найдены")
     exit()
 
 bot = telebot.TeleBot(BOT_TOKEN)
@@ -177,11 +177,10 @@ def handle_text(message):
         bot.send_message(chat_id, "Выберите формат обучения", reply_markup=signup_menu())
 
     elif msg == "👩‍🏫 Офлайн":
-        # Добавляем выбор возраста и программы
         markup = types.InlineKeyboardMarkup()
         for key, name in AGE_GROUPS.items():
-            markup.add(types.InlineKeyboardButton(name, callback_data=f"offline_{key}"))
-        bot.send_message(chat_id, "Выберите возрастную группу:", reply_markup=markup)
+            markup.add(types.InlineKeyboardButton(f"{name} - {PROGRAMS[key]}", callback_data=f"offline_{key}"))
+        bot.send_message(chat_id, "Выберите возрастную группу и программу:", reply_markup=markup)
         user_data[chat_id] = {"state":"waiting_age", "format":"офлайн"}
 
     elif msg == "💻 Онлайн":
@@ -252,7 +251,6 @@ def handle_user_data(message):
 
     elif state == "phone":
         user_data[chat_id]["phone"] = msg
-        # Для онлайн просто указываем "Нужно обсудить"
         if user_data[chat_id]["format"] == "онлайн":
             user_data[chat_id]["age_group"] = "Онлайн"
             user_data[chat_id]["program"] = "Онлайн обучение"
@@ -286,10 +284,10 @@ def apps(message):
     bot.send_message(message.chat.id, text)
 
 # =========================
-# Webhook для Render
+# Webhook для Telegram
 # =========================
 
-@app.route('/', methods=['POST'])
+@app.route('/webhook', methods=['POST'])
 def webhook():
     json_data = request.get_json()
     if json_data:
@@ -298,11 +296,18 @@ def webhook():
     return "OK", 200
 
 # =========================
+# Проверка состояния сервера
+# =========================
+
+@app.route('/', methods=['GET', 'HEAD'])
+def index():
+    return "Bot is running!", 200
+
+# =========================
 # Запуск
 # =========================
 
 if __name__ == "__main__":
-    # Ставим webhook
     bot.remove_webhook()
     bot.set_webhook(url=WEBHOOK_URL)
     port = int(os.environ.get("PORT", 10000))
