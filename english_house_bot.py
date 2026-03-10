@@ -7,7 +7,7 @@ from flask import Flask
 import threading
 
 # =========================
-# Flask (для Render)
+# Flask для Render
 # =========================
 
 app = Flask(__name__)
@@ -27,7 +27,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # =========================
-# Настройки
+# Токен
 # =========================
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -74,34 +74,57 @@ init_db()
 
 SCHOOL_INFO = {
     "phone": "+7 (939) 489-80-33",
-    "address": "г. Кызыл, ТД Континент",
+    "address": "г. Кызыл, ТД Континент, ул. Лопсанчапа 35",
+    "cabinet": "56 кабинет",
     "working_hours": "08:00 - 21:00",
     "instagram": "english_home17"
 }
 
-AGE_GROUPS = {
-    "kids_3_4": "👶 Дети 3-4 лет",
-    "kids_6_7": "🧒 Дети 6-7 лет",
-    "teens": "👦 Подростки 14-15 лет",
-    "adults": "👨‍🎓 Взрослые"
-}
+PROGRAMS_TEXT = """
+📚 ПРОГРАММЫ ОБУЧЕНИЯ
 
-PROGRAMS = {
-    "kids_3_4": "🇬🇧 I can sing",
-    "kids_6_7": "🇬🇧 I can speak",
-    "teens": "🇬🇧 Английский для подростков",
-    "adults": "🇬🇧 Английский для взрослых"
-}
+👶 0 ступень (3-4 года)
+🇬🇧 I can sing / Games
+💰 3600₽
+📅 2 раза в неделю
+⏱ 20 минут
 
-SCHEDULES = {
-    "kids_3_4": "ПН СР ЧТ 08:30",
-    "kids_6_7": "ПН СР ЧТ 08:30",
-    "teens": "ПН СР ЧТ 15:00",
-    "adults": "СБ 13:00"
-}
+🧒 Дети 6-10 лет
+🇬🇧 I can speak
+💰 6500₽
+📅 2 раза в неделю
+⏱ 60 минут
+
+👦 Подростки
+💰 7900₽
+📅 1 раз в неделю
+⏱ 2 часа
+
+👨‍🎓 Взрослые
+💰 7900₽
+📅 1 раз в неделю
+⏱ 2 часа
+"""
+
+ABOUT_SCHOOL = """
+🏫 О школе English House
+
+Мы обучаем английскому языку детей, подростков и взрослых.
+
+📚 Наши занятия проходят в небольших группах, что позволяет уделить внимание каждому ученику.
+
+Мы используем современные методики обучения, развиваем разговорную речь, понимание языка и уверенность в использовании английского.
+
+Наши программы подходят для:
+• детей
+• подростков
+• взрослых
+
+Мы помогаем ученикам развивать навыки общения, понимания и уверенного использования английского языка.
+"""
 
 # =========================
-# Временные данные пользователей
+# Данные пользователей
 # =========================
 
 user_data = {}
@@ -134,24 +157,6 @@ def save_application(user_id, data):
     conn.close()
 
     return app_id
-
-# =========================
-# Обновление статуса
-# =========================
-
-def update_status(app_id, status):
-
-    conn = sqlite3.connect("english_house.db")
-    cursor = conn.cursor()
-
-    cursor.execute("""
-    UPDATE applications
-    SET status = ?
-    WHERE id = ?
-    """,(status,app_id))
-
-    conn.commit()
-    conn.close()
 
 # =========================
 # Уведомление админу
@@ -188,6 +193,19 @@ def main_menu():
     return markup
 
 # =========================
+# Меню записи
+# =========================
+
+def signup_menu():
+
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+
+    markup.add("👩‍🏫 Офлайн","💻 Онлайн")
+    markup.add("⬅️ Назад")
+
+    return markup
+
+# =========================
 # START
 # =========================
 
@@ -200,7 +218,7 @@ def start(message):
 Привет {message.from_user.first_name}!
 
 Я помогу записаться
-на пробный урок.
+на занятия английским.
 """
 
     bot.send_message(message.chat.id,text,reply_markup=main_menu())
@@ -210,43 +228,58 @@ def start(message):
 # =========================
 
 @bot.message_handler(func=lambda m:True)
-def text(message):
+def handle_text(message):
 
-    chat_id=message.chat.id
-    msg=message.text
+    chat_id = message.chat.id
+    msg = message.text
 
-    if msg=="📝 Записаться":
+    if msg == "📝 Записаться":
 
-        user_data[chat_id]={"state":"name"}
+        bot.send_message(chat_id,"Выберите формат обучения",reply_markup=signup_menu())
+
+    elif msg == "👩‍🏫 Офлайн":
+
+        user_data[chat_id]={"state":"name","format":"офлайн"}
+
         bot.send_message(chat_id,"Как вас зовут?")
 
-    elif msg=="👥 Программы":
+    elif msg == "💻 Онлайн":
 
-        text="📚 Наши программы:\n\n"
+        user_data[chat_id]={"state":"name","format":"онлайн"}
 
-        for age in AGE_GROUPS:
-            text+=f"{AGE_GROUPS[age]}\n"
-            text+=f"{PROGRAMS[age]}\n\n"
+        bot.send_message(chat_id,"Как вас зовут?")
 
-        bot.send_message(chat_id,text)
+    elif msg == "👥 Программы":
 
-    elif msg=="📞 Контакты":
+        bot.send_message(chat_id,PROGRAMS_TEXT)
+
+    elif msg == "📞 Контакты":
 
         text=f"""
-📍 {SCHOOL_INFO["address"]}
+📍 Адрес:
+{SCHOOL_INFO["address"]}
 
-📞 {SCHOOL_INFO["phone"]}
+🏫 {SCHOOL_INFO["cabinet"]}
 
-🕒 {SCHOOL_INFO["working_hours"]}
+📞 Телефон:
+{SCHOOL_INFO["phone"]}
 
-📷 @{SCHOOL_INFO["instagram"]}
+🕒 Часы работы:
+{SCHOOL_INFO["working_hours"]}
+
+📷 Instagram:
+@{SCHOOL_INFO["instagram"]}
 """
 
         bot.send_message(chat_id,text)
 
-    elif msg=="ℹ️ О школе":
+    elif msg == "ℹ️ О школе":
 
-        bot.send_message(chat_id,"Школа английского языка с 2015 года")
+        bot.send_message(chat_id,ABOUT_SCHOOL)
+
+    elif msg == "⬅️ Назад":
+
+        bot.send_message(chat_id,"Главное меню",reply_markup=main_menu())
 
     else:
 
@@ -266,69 +299,35 @@ def text(message):
 
                 user_data[chat_id]["phone"]=msg
 
-                markup=types.InlineKeyboardMarkup()
+                format_type=user_data[chat_id]["format"]
 
-                for age in AGE_GROUPS:
+                if format_type=="онлайн":
 
-                    markup.add(
-                        types.InlineKeyboardButton(
-                            AGE_GROUPS[age],
-                            callback_data=age
-                        )
-                    )
+                    user_data[chat_id]["age_group"]="Онлайн"
+                    user_data[chat_id]["program"]="Онлайн обучение"
+                    user_data[chat_id]["schedule"]="Нужно обсудить по телефону"
 
-                bot.send_message(chat_id,"Выберите возрастную группу",reply_markup=markup)
+                else:
 
-# =========================
-# Callback кнопки
-# =========================
+                    user_data[chat_id]["age_group"]="Офлайн"
+                    user_data[chat_id]["program"]="Офлайн обучение"
+                    user_data[chat_id]["schedule"]="По расписанию школы"
 
-@bot.callback_query_handler(func=lambda call:True)
-def callback(call):
+                app_id=save_application(chat_id,user_data[chat_id])
 
-    chat_id=call.message.chat.id
-    data=call.data
+                notify_admin(app_id,user_data[chat_id])
 
-    if data in AGE_GROUPS:
-
-        user_data[chat_id]["age_group"]=AGE_GROUPS[data]
-        user_data[chat_id]["program"]=PROGRAMS[data]
-        user_data[chat_id]["schedule"]=SCHEDULES[data]
-
-        app_id=save_application(chat_id,user_data[chat_id])
-
-        notify_admin(app_id,user_data[chat_id])
-
-        bot.edit_message_text(
-        f"""
+                bot.send_message(chat_id,f"""
 ✅ Заявка #{app_id} отправлена!
 
-Мы скоро свяжемся с вами.
-""",
-        chat_id,
-        call.message.message_id
-        )
+Мы скоро перезвоним вам,
+чтобы обсудить время и дату занятий.
+""")
 
-    elif data.startswith("call_"):
-
-        app_id=data.split("_")[1]
-        update_status(app_id,"позвонили")
-        bot.answer_callback_query(call.id,"Статус: позвонили")
-
-    elif data.startswith("ok_"):
-
-        app_id=data.split("_")[1]
-        update_status(app_id,"записан")
-        bot.answer_callback_query(call.id,"Статус: записан")
-
-    elif data.startswith("cancel_"):
-
-        app_id=data.split("_")[1]
-        update_status(app_id,"отказ")
-        bot.answer_callback_query(call.id,"Статус: отказ")
+                del user_data[chat_id]
 
 # =========================
-# Админ — последние заявки
+# Админ команды
 # =========================
 
 @bot.message_handler(commands=["apps"])
@@ -356,101 +355,12 @@ def apps(message):
 
         text+=f"""
 #{r[0]}
-
 👤 {r[1]}
 📞 {r[2]}
-
 Статус: {r[3]}
 """
 
     bot.send_message(message.chat.id,text)
-
-# =========================
-# Админ — открыть заявку
-# =========================
-
-@bot.message_handler(commands=["app"])
-def open_app(message):
-
-    if message.chat.id!=ADMIN_CHAT_ID:
-        return
-
-    try:
-        app_id=message.text.split()[1]
-    except:
-        bot.send_message(message.chat.id,"Например: /app 5")
-        return
-
-    conn=sqlite3.connect("english_house.db")
-    cursor=conn.cursor()
-
-    cursor.execute("SELECT * FROM applications WHERE id=?",(app_id,))
-    app_data=cursor.fetchone()
-
-    conn.close()
-
-    if not app_data:
-        bot.send_message(message.chat.id,"Заявка не найдена")
-        return
-
-    text=f"""
-📋 Заявка #{app_data[0]}
-
-👤 {app_data[3]}
-📞 {app_data[4]}
-
-👥 {app_data[5]}
-📚 {app_data[6]}
-📅 {app_data[7]}
-
-Статус: {app_data[8]}
-"""
-
-    markup=types.InlineKeyboardMarkup()
-
-    markup.add(
-        types.InlineKeyboardButton("📞 Позвонили",callback_data=f"call_{app_id}"),
-        types.InlineKeyboardButton("✅ Записан",callback_data=f"ok_{app_id}")
-    )
-
-    markup.add(
-        types.InlineKeyboardButton("❌ Отказ",callback_data=f"cancel_{app_id}")
-    )
-
-    bot.send_message(message.chat.id,text,reply_markup=markup)
-
-# =========================
-# Статистика
-# =========================
-
-@bot.message_handler(commands=["stats"])
-def stats(message):
-
-    if message.chat.id!=ADMIN_CHAT_ID:
-        return
-
-    conn=sqlite3.connect("english_house.db")
-    cursor=conn.cursor()
-
-    cursor.execute("SELECT COUNT(*) FROM applications")
-    total=cursor.fetchone()[0]
-
-    cursor.execute("""
-    SELECT COUNT(*)
-    FROM applications
-    WHERE date(created_at)=date('now')
-    """)
-    today=cursor.fetchone()[0]
-
-    conn.close()
-
-    bot.send_message(message.chat.id,f"""
-📊 Статистика
-
-Сегодня заявок: {today}
-
-Всего заявок: {total}
-""")
 
 # =========================
 # Запуск
