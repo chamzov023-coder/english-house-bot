@@ -4,82 +4,32 @@ import datetime
 import sqlite3
 import logging
 import os
-import time
-import requests
-from flask import Flask, request
+from flask import Flask
 import threading
 
 # Заглушка для Render
 app = Flask(__name__)
 
-
 @app.route('/')
 def home():
     return "Bot is running!"
 
-
-@app.route('/webhook', methods=['POST'])
-def webhook():
-    try:
-        update = telebot.types.Update.de_json(request.stream.read().decode('utf-8'))
-        bot.process_new_updates([update])
-        return 'OK', 200
-    except Exception as e:
-        logging.error(f"Webhook error: {e}")
-        return 'Error', 500
-
-
 def run_flask():
     app.run(host='0.0.0.0', port=10000)
 
-
 # Запускаем заглушку в отдельном потоке
 threading.Thread(target=run_flask, daemon=True).start()
-
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # === ВАШИ ДАННЫЕ ===
-BOT_TOKEN = '8629886155:AAFEChuATmoGh5UuxCvxpBlNUl1kOwfwAbk'
+BOT_TOKEN = '8629886155:AAHSdNohaJGXLuDLFMhXpFiAU_10hmL9mzY'
 ADMIN_CHAT_ID = 823680495
 
 if BOT_TOKEN == 'YOUR_BOT_TOKEN':
     logger.error("❌ Токен бота не указан!")
     exit()
-
-
-# === ПРИНУДИТЕЛЬНОЕ УБИЙСТВО ВСЕХ СТАРЫХ ПОДКЛЮЧЕНИЙ ===
-def kill_all_connections():
-    try:
-        logger.info("🔪 Принудительное завершение всех старых подключений...")
-
-        # 1. Удаляем вебхук (если был)
-        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/deleteWebhook?drop_pending_updates=true")
-
-        # 2. Ждем 2 секунды
-        time.sleep(2)
-
-        # 3. Проверяем, что вебхук удален
-        webhook_info = requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getWebhookInfo").json()
-        if webhook_info.get('result', {}).get('url') == '':
-            logger.info("✅ Вебхук удален")
-        else:
-            logger.warning("⚠️ Вебхук все еще есть")
-
-        # 4. Пытаемся подключиться и сразу отключиться
-        temp_bot = telebot.TeleBot(BOT_TOKEN)
-        temp_bot.get_me()
-        logger.info("✅ Бот доступен")
-
-        return True
-    except Exception as e:
-        logger.error(f"❌ Ошибка при убийстве подключений: {e}")
-        return False
-
-
-# Выполняем принудительный сброс
-kill_all_connections()
 
 # Инициализация бота
 bot = telebot.TeleBot(BOT_TOKEN)
@@ -88,7 +38,7 @@ bot = telebot.TeleBot(BOT_TOKEN)
 # === БАЗА ДАННЫХ ===
 def init_database():
     try:
-        conn = sqlite3.connect('english_home.db')
+        conn = sqlite3.connect('english_house.db')
         cursor = conn.cursor()
 
         cursor.execute("DROP TABLE IF EXISTS applications")
@@ -103,7 +53,6 @@ def init_database():
                            phone       TEXT,
                            age_group   TEXT,
                            program     TEXT,
-                           format      TEXT,
                            schedule    TEXT,
                            status      TEXT      DEFAULT 'новая',
                            created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -121,7 +70,6 @@ init_database()
 
 # === ДАННЫЕ ШКОЛЫ ===
 SCHOOL_INFO = {
-    'name': 'English Home',
     'phone': '+7 (939) 489-80-33',
     'address': 'г. Кызыл, ТД Континент, ул. Лопсанчапа, д. 35, 56 кабинет',
     'working_hours': '08:00 - 21:00',
@@ -136,24 +84,12 @@ AGE_GROUPS = {
     'adults': '👨‍🎓 Взрослые'
 }
 
-# === ПРОГРАММЫ С ЦЕНАМИ ===
+# === ПРОГРАММЫ (ТОЛЬКО ПО ОДНОЙ ДЛЯ КАЖДОЙ ГРУППЫ) ===
 PROGRAMS = {
-    'kids_3_4': {
-        'name': '🇬🇧 0 ступень - Я умею петь / I can sing Games',
-        'price': '3600₽/мес'
-    },
-    'kids_6_7': {
-        'name': '🇬🇧 1 ступень - Я умею говорить / I can speak',
-        'price': '6500₽/мес'
-    },
-    'teens_14_15': {
-        'name': '🇬🇧 Английский для подростков',
-        'price': '6500₽/мес'
-    },
-    'adults': {
-        'name': '🇬🇧 Английский для взрослых',
-        'price': '7900₽/мес'
-    }
+    'kids_3_4': '🇬🇧 0 ступень - Я умею петь / I can sing Games',
+    'kids_6_7': '🇬🇧 1 ступень - Я умею говорить / I can speak',
+    'teens_14_15': '🇬🇧 Английский для подростков',
+    'adults': '🇬🇧 Английский для взрослых'
 }
 
 # === РАСПИСАНИЕ (ОДНО ДЛЯ КАЖДОЙ ГРУППЫ) ===
@@ -171,12 +107,12 @@ user_data = {}
 # === СОХРАНЕНИЕ ЗАЯВКИ ===
 def save_application(user_id, data):
     try:
-        conn = sqlite3.connect('english_home.db')
+        conn = sqlite3.connect('english_house.db')
         cursor = conn.cursor()
         cursor.execute('''
                        INSERT INTO applications
-                       (user_id, username, client_name, phone, age_group, program, format, schedule, status)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                       (user_id, username, client_name, phone, age_group, program, schedule, status)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                        ''', (
                            user_id,
                            data.get('username', ''),
@@ -184,7 +120,6 @@ def save_application(user_id, data):
                            data.get('phone', ''),
                            data.get('age_group', ''),
                            data.get('program', ''),
-                           data.get('format', ''),
                            data.get('schedule', ''),
                            'новая'
                        ))
@@ -206,7 +141,6 @@ def notify_admin(app_id, data):
 📞 Телефон: {data.get('phone')}
 👥 Возраст: {data.get('age_group')}
 📚 Программа: {data.get('program')}
-💻 Формат: {data.get('format')}
 📅 Расписание: {data.get('schedule')}
 🆔 @{data.get('username', 'нет')}"""
         bot.send_message(ADMIN_CHAT_ID, msg)
@@ -227,10 +161,10 @@ def start_command(message):
             types.KeyboardButton('ℹ️ О школе')
         )
 
-        text = f"""🏠 {SCHOOL_INFO['name']} 🏠
+        text = f"""🏠 English House 🏠
 
 Привет, {user_name}!
-Я помогу записаться на занятия.
+Я помогу записаться на пробный урок.
 
 Выберите действие в меню 👇"""
         bot.send_message(message.chat.id, text, reply_markup=markup)
@@ -263,7 +197,7 @@ def handle_text(message):
         bot.send_message(chat_id, contacts)
 
     elif text == 'ℹ️ О школе':
-        about = f"""🏠 О школе {SCHOOL_INFO['name']}
+        about = """🏠 О школе English House
 
 Мы помогаем выучить английский с 2015 года!
 
@@ -272,7 +206,7 @@ def handle_text(message):
 ✅ Разговорные клубы
 ✅ Подготовка к экзаменам
 
-Приходите к нам на занятия!"""
+Приходите на бесплатный пробный урок!"""
         bot.send_message(chat_id, about)
 
     elif text == '⬅️ Назад':
@@ -307,33 +241,14 @@ def handle_text(message):
 
 # === ПОКАЗ ПРОГРАММ ===
 def show_programs(message):
-    text = f"👥 ПРОГРАММЫ ОБУЧЕНИЯ ({SCHOOL_INFO['name']}):\n\n"
+    text = "👥 ПРОГРАММЫ ОБУЧЕНИЯ:\n\n"
     for age_id, age_name in AGE_GROUPS.items():
-        program = PROGRAMS[age_id]
         text += f"{age_name}\n"
-        text += f"  • {program['name']}\n"
-        text += f"  💰 {program['price']}\n\n"
+        text += f"  • {PROGRAMS[age_id]}\n\n"
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add(types.KeyboardButton('⬅️ Назад'))
     bot.send_message(message.chat.id, text, reply_markup=markup)
-
-
-# === ПОКАЗ ВЫБОРА ФОРМАТА ===
-def show_format_choice(chat_id, age_id, msg_id):
-    markup = types.InlineKeyboardMarkup(row_width=2)
-    markup.add(
-        types.InlineKeyboardButton("🏠 Офлайн", callback_data=f"format_offline_{age_id}"),
-        types.InlineKeyboardButton("💻 Онлайн", callback_data=f"format_online_{age_id}")
-    )
-    markup.add(types.InlineKeyboardButton("❌ Отмена", callback_data="cancel"))
-
-    bot.edit_message_text(
-        "Выберите формат занятий:",
-        chat_id,
-        msg_id,
-        reply_markup=markup
-    )
 
 
 # === ОБРАБОТЧИК ИНЛАЙН КНОПОК ===
@@ -344,57 +259,39 @@ def handle_callback(call):
 
     try:
         if call.data.startswith('age_'):
-            age_key = call.data.replace('age_', '')
-            if age_key in AGE_GROUPS:
-                user_data[chat_id]['age_group'] = AGE_GROUPS[age_key]
-                user_data[chat_id]['program'] = PROGRAMS[age_key]['name']
-                user_data[chat_id]['price'] = PROGRAMS[age_key]['price']
-                user_data[chat_id]['schedule'] = SCHEDULES[age_key]
+            age_id = call.data.replace('age_', '')
+            if age_id in AGE_GROUPS:
+                user_data[chat_id]['age_group'] = AGE_GROUPS[age_id]
+                user_data[chat_id]['program'] = PROGRAMS[age_id]
+                user_data[chat_id]['schedule'] = SCHEDULES[age_id]
 
-                # Показываем выбор формата
-                show_format_choice(chat_id, age_key, msg_id)
+                # Сразу показываем подтверждение с выбранными данными
+                confirm_text = f"""📝 Подтвердите запись:
 
-        elif call.data.startswith('format_'):
-            parts = call.data.split('_')
-            format_type = parts[1]
-            age_key = parts[2]
+👥 Группа: {AGE_GROUPS[age_id]}
+📚 Программа: {PROGRAMS[age_id]}
+📅 Расписание: {SCHEDULES[age_id]}
 
-            format_text = "💻 Онлайн" if format_type == "online" else "🏠 Офлайн"
-            user_data[chat_id]['format'] = format_text
+Всё верно?"""
 
-            # Сразу показываем подтверждение
-            program = PROGRAMS[age_key]
-            confirm_text = f"""📝 Подтвердите запись:
+                markup = types.InlineKeyboardMarkup(row_width=2)
+                markup.add(
+                    types.InlineKeyboardButton("✅ Да, всё верно", callback_data=f"confirm_{age_id}"),
+                    types.InlineKeyboardButton("❌ Отмена", callback_data="cancel")
+                )
 
-👥 Группа: {AGE_GROUPS[age_key]}
-📚 Программа: {program['name']}
-💰 Стоимость: {program['price']}
-💻 Формат: {format_text}
-📅 Расписание: {SCHEDULES[age_key]}
-
-После подтверждения мы свяжемся с вами для уточнения деталей."""
-
-            markup = types.InlineKeyboardMarkup(row_width=2)
-            markup.add(
-                types.InlineKeyboardButton("✅ Подтвердить", callback_data=f"confirm_{age_key}"),
-                types.InlineKeyboardButton("❌ Отмена", callback_data="cancel")
-            )
-
-            bot.edit_message_text(confirm_text, chat_id, msg_id, reply_markup=markup)
+                bot.edit_message_text(confirm_text, chat_id, msg_id, reply_markup=markup)
 
         elif call.data.startswith('confirm_'):
-            age_key = call.data.replace('confirm_', '')
+            age_id = call.data.replace('confirm_', '')
 
             app_id = save_application(chat_id, user_data[chat_id])
 
             if app_id:
-                program = PROGRAMS[age_key]
                 bot.edit_message_text(
                     f"✅ Заявка #{app_id} создана!\n\n"
                     f"👥 Группа: {user_data[chat_id]['age_group']}\n"
                     f"📚 Программа: {user_data[chat_id]['program']}\n"
-                    f"💰 Стоимость: {program['price']}\n"
-                    f"💻 Формат: {user_data[chat_id]['format']}\n"
                     f"📅 Расписание: {user_data[chat_id]['schedule']}\n\n"
                     f"Скоро мы свяжемся с вами для подтверждения!",
                     chat_id,
@@ -419,7 +316,7 @@ def handle_callback(call):
 @bot.message_handler(commands=['apps'])
 def show_apps(message):
     if message.chat.id == ADMIN_CHAT_ID:
-        conn = sqlite3.connect('english_home.db')
+        conn = sqlite3.connect('english_house.db')
         cursor = conn.cursor()
         cursor.execute('SELECT * FROM applications ORDER BY created_at DESC LIMIT 10')
         apps = cursor.fetchall()
@@ -428,12 +325,11 @@ def show_apps(message):
         if apps:
             text = "📊 ПОСЛЕДНИЕ ЗАЯВКИ:\n\n"
             for app in apps:
-                text += f"#{app[0]} - {app[9]}\n"
+                text += f"#{app[0]} - {app[8]}\n"
                 text += f"👤 {app[3]} | 📞 {app[4]}\n"
                 text += f"👥 {app[5]}\n"
                 text += f"📚 {app[6]}\n"
-                text += f"💻 {app[7]}\n"
-                text += f"📅 {app[8]}\n\n"
+                text += f"📅 {app[7]}\n\n"
             bot.send_message(message.chat.id, text)
         else:
             bot.send_message(message.chat.id, "📭 Заявок пока нет")
@@ -443,6 +339,7 @@ def show_apps(message):
 
 # === ЗАПУСК ===
 if __name__ == '__main__':
-    print(f"🚀 Бот {SCHOOL_INFO['name']} запущен...")
+    print("🚀 Бот English House запущен...")
     print("✅ Нажмите Ctrl+C для остановки")
     bot.infinity_polling()
+
