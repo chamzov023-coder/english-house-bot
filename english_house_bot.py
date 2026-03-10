@@ -4,7 +4,9 @@ import datetime
 import sqlite3
 import logging
 import os
-from flask import Flask
+import time
+import requests
+from flask import Flask, request
 import threading
 
 # Заглушка для Render
@@ -14,6 +16,17 @@ app = Flask(__name__)
 @app.route('/')
 def home():
     return "Bot is running!"
+
+
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    try:
+        update = telebot.types.Update.de_json(request.stream.read().decode('utf-8'))
+        bot.process_new_updates([update])
+        return 'OK', 200
+    except Exception as e:
+        logging.error(f"Webhook error: {e}")
+        return 'Error', 500
 
 
 def run_flask():
@@ -34,6 +47,39 @@ ADMIN_CHAT_ID = 823680495
 if BOT_TOKEN == 'YOUR_BOT_TOKEN':
     logger.error("❌ Токен бота не указан!")
     exit()
+
+
+# === ПРИНУДИТЕЛЬНОЕ УБИЙСТВО ВСЕХ СТАРЫХ ПОДКЛЮЧЕНИЙ ===
+def kill_all_connections():
+    try:
+        logger.info("🔪 Принудительное завершение всех старых подключений...")
+
+        # 1. Удаляем вебхук (если был)
+        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/deleteWebhook?drop_pending_updates=true")
+
+        # 2. Ждем 2 секунды
+        time.sleep(2)
+
+        # 3. Проверяем, что вебхук удален
+        webhook_info = requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getWebhookInfo").json()
+        if webhook_info.get('result', {}).get('url') == '':
+            logger.info("✅ Вебхук удален")
+        else:
+            logger.warning("⚠️ Вебхук все еще есть")
+
+        # 4. Пытаемся подключиться и сразу отключиться
+        temp_bot = telebot.TeleBot(BOT_TOKEN)
+        temp_bot.get_me()
+        logger.info("✅ Бот доступен")
+
+        return True
+    except Exception as e:
+        logger.error(f"❌ Ошибка при убийстве подключений: {e}")
+        return False
+
+
+# Выполняем принудительный сброс
+kill_all_connections()
 
 # Инициализация бота
 bot = telebot.TeleBot(BOT_TOKEN)
@@ -298,7 +344,7 @@ def handle_callback(call):
 
     try:
         if call.data.startswith('age_'):
-            age_key = call.data.replace('age_', '')  # теперь age_key = 'kids_3_4', 'teens_14_15' и т.д.
+            age_key = call.data.replace('age_', '')
             if age_key in AGE_GROUPS:
                 user_data[chat_id]['age_group'] = AGE_GROUPS[age_key]
                 user_data[chat_id]['program'] = PROGRAMS[age_key]['name']
@@ -310,8 +356,8 @@ def handle_callback(call):
 
         elif call.data.startswith('format_'):
             parts = call.data.split('_')
-            format_type = parts[1]  # online или offline
-            age_key = parts[2]  # теперь age_key = 'kids_3_4' или 'teens_14_15'
+            format_type = parts[1]
+            age_key = parts[2]
 
             format_text = "💻 Онлайн" if format_type == "online" else "🏠 Офлайн"
             user_data[chat_id]['format'] = format_text
@@ -367,6 +413,7 @@ def handle_callback(call):
     except Exception as e:
         logger.error(f"❌ Ошибка в callback: {e}")
         bot.send_message(chat_id, "Произошла ошибка. Попробуйте снова.")
+
 
 # === КОМАНДА ДЛЯ ПРОСМОТРА ЗАЯВОК ===
 @bot.message_handler(commands=['apps'])
