@@ -28,7 +28,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # === ВАШИ ДАННЫЕ ===
-BOT_TOKEN = '8629886155:AAHSdNohaJGXLuDLFMhXpFiAU_10hmL9mzY'
+BOT_TOKEN = '8629886155:AAFEChuATmoGh5UuxCvxpBlNUl1kOwfwAbk'
 ADMIN_CHAT_ID = 823680495
 
 if BOT_TOKEN == 'YOUR_BOT_TOKEN':
