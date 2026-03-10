@@ -298,51 +298,51 @@ def handle_callback(call):
 
     try:
         if call.data.startswith('age_'):
-            age_id = call.data.replace('age_', '')
-            if age_id in AGE_GROUPS:
-                user_data[chat_id]['age_group'] = AGE_GROUPS[age_id]
-                user_data[chat_id]['program'] = PROGRAMS[age_id]['name']
-                user_data[chat_id]['price'] = PROGRAMS[age_id]['price']
-                user_data[chat_id]['schedule'] = SCHEDULES[age_id]
+            age_key = call.data.replace('age_', '')  # теперь age_key = 'kids_3_4', 'teens_14_15' и т.д.
+            if age_key in AGE_GROUPS:
+                user_data[chat_id]['age_group'] = AGE_GROUPS[age_key]
+                user_data[chat_id]['program'] = PROGRAMS[age_key]['name']
+                user_data[chat_id]['price'] = PROGRAMS[age_key]['price']
+                user_data[chat_id]['schedule'] = SCHEDULES[age_key]
 
                 # Показываем выбор формата
-                show_format_choice(chat_id, age_id, msg_id)
+                show_format_choice(chat_id, age_key, msg_id)
 
         elif call.data.startswith('format_'):
             parts = call.data.split('_')
             format_type = parts[1]  # online или offline
-            age_id = parts[2]
+            age_key = parts[2]  # теперь age_key = 'kids_3_4' или 'teens_14_15'
 
             format_text = "💻 Онлайн" if format_type == "online" else "🏠 Офлайн"
             user_data[chat_id]['format'] = format_text
 
-            # Сразу показываем подтверждение с выбранными данными
-            program = PROGRAMS[age_id]
+            # Сразу показываем подтверждение
+            program = PROGRAMS[age_key]
             confirm_text = f"""📝 Подтвердите запись:
 
-👥 Группа: {AGE_GROUPS[age_id]}
+👥 Группа: {AGE_GROUPS[age_key]}
 📚 Программа: {program['name']}
 💰 Стоимость: {program['price']}
 💻 Формат: {format_text}
-📅 Расписание: {SCHEDULES[age_id]}
+📅 Расписание: {SCHEDULES[age_key]}
 
 После подтверждения мы свяжемся с вами для уточнения деталей."""
 
             markup = types.InlineKeyboardMarkup(row_width=2)
             markup.add(
-                types.InlineKeyboardButton("✅ Подтвердить", callback_data=f"confirm_{age_id}"),
+                types.InlineKeyboardButton("✅ Подтвердить", callback_data=f"confirm_{age_key}"),
                 types.InlineKeyboardButton("❌ Отмена", callback_data="cancel")
             )
 
             bot.edit_message_text(confirm_text, chat_id, msg_id, reply_markup=markup)
 
         elif call.data.startswith('confirm_'):
-            age_id = call.data.replace('confirm_', '')
+            age_key = call.data.replace('confirm_', '')
 
             app_id = save_application(chat_id, user_data[chat_id])
 
             if app_id:
-                program = PROGRAMS[age_id]
+                program = PROGRAMS[age_key]
                 bot.edit_message_text(
                     f"✅ Заявка #{app_id} создана!\n\n"
                     f"👥 Группа: {user_data[chat_id]['age_group']}\n"
@@ -367,7 +367,6 @@ def handle_callback(call):
     except Exception as e:
         logger.error(f"❌ Ошибка в callback: {e}")
         bot.send_message(chat_id, "Произошла ошибка. Попробуйте снова.")
-
 
 # === КОМАНДА ДЛЯ ПРОСМОТРА ЗАЯВОК ===
 @bot.message_handler(commands=['apps'])
