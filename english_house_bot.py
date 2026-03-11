@@ -6,43 +6,43 @@ import os
 from flask import Flask
 import threading
 
-# =========================
-# Flask для Render (заглушка)
-# =========================
+# =================================
+# Flask (чтобы Render не засыпал)
+# =================================
 app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Bot is running!"
+    return "English Home bot running!"
 
 def run_flask():
-    app.run(host="0.0.0.0", port=10000, debug=False, use_reloader=False)
+    app.run(host="0.0.0.0", port=10000)
 
-# =========================
+# =================================
 # Логи
-# =========================
+# =================================
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
-# =========================
+# =================================
 # Токен
-# =========================
+# =================================
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_CHAT_ID = 823680495
 
 if not BOT_TOKEN:
-    print("❌ BOT_TOKEN не найден")
+    print("BOT_TOKEN не найден")
     exit()
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# =========================
+# =================================
 # База данных
-# =========================
+# =================================
 def init_db():
-    conn = sqlite3.connect("english_house.db")
-    cursor = conn.cursor()
-    cursor.execute("""
+    conn = sqlite3.connect("english_home.db")
+    cur = conn.cursor()
+
+    cur.execute("""
     CREATE TABLE IF NOT EXISTS applications(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER,
@@ -52,18 +52,18 @@ def init_db():
         age_group TEXT,
         program TEXT,
         schedule TEXT,
-        status TEXT DEFAULT 'новая',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     """)
+
     conn.commit()
     conn.close()
 
 init_db()
 
-# =========================
+# =================================
 # Данные школы
-# =========================
+# =================================
 SCHOOL_INFO = {
     "phone": "+7 (939) 489-80-33",
     "address": "г. Кызыл, ТД Континент, ул. Лопсанчапа 35",
@@ -93,21 +93,23 @@ PRICES = {
     'adults': '7900₽ — 1 раз в неделю по 2 часа'
 }
 
-# =========================
+# =================================
 # Временное хранилище
-# =========================
+# =================================
 user_data = {}
 
-# =========================
+# =================================
 # Сохранение заявки
-# =========================
+# =================================
 def save_application(user_id, data):
-    conn = sqlite3.connect("english_house.db")
-    cursor = conn.cursor()
-    cursor.execute("""
+
+    conn = sqlite3.connect("english_home.db")
+    cur = conn.cursor()
+
+    cur.execute("""
     INSERT INTO applications
-    (user_id,username,client_name,phone,age_group,program,schedule)
-    VALUES (?,?,?,?,?,?,?)
+    (user_id, username, client_name, phone, age_group, program, schedule)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
     """, (
         user_id,
         data.get("username"),
@@ -117,92 +119,105 @@ def save_application(user_id, data):
         data.get("program"),
         data.get("schedule")
     ))
+
     conn.commit()
-    app_id = cursor.lastrowid
+    app_id = cur.lastrowid
     conn.close()
+
     return app_id
 
-# =========================
+# =================================
 # Уведомление админу
-# =========================
+# =================================
 def notify_admin(app_id, data):
+
     text = f"""
 🔔 НОВАЯ ЗАЯВКА #{app_id}
 
-👤 {data['client_name']}
-📞 {data['phone']}
-👥 {data['age_group']}
-📚 {data['program']}
-📅 {data['schedule']}
+👤 {data.get("client_name")}
+📞 {data.get("phone")}
+👥 {data.get("age_group")}
+📚 {data.get("program")}
+📅 {data.get("schedule")}
 
-@{data['username']}
+@{data.get("username")}
 """
+
     bot.send_message(ADMIN_CHAT_ID, text)
 
-# =========================
-# Главное меню
-# =========================
+# =================================
+# Меню
+# =================================
 def main_menu():
+
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add("📝 Записаться","👥 Программы")
-    markup.add("💰 Прайс","📞 Контакты","ℹ️ О школе")
+
+    markup.add("📝 Записаться")
+    markup.add("👥 Программы", "💰 Прайс")
+    markup.add("📞 Контакты", "ℹ️ О школе")
+
     return markup
 
-# =========================
-# Меню записи
-# =========================
-def signup_menu():
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add("👩‍🏫 Офлайн","💻 Онлайн")
-    markup.add("⬅️ Назад")
-    return markup
-
-# =========================
+# =================================
 # START
-# =========================
+# =================================
 @bot.message_handler(commands=["start"])
 def start(message):
+
     bot.send_message(
         message.chat.id,
-        f"🏫 English House\n\nПривет, {message.from_user.first_name}!\nЯ помогу записаться на занятия английским.",
+        f"""
+🏫 English Home
+
+Привет, {message.from_user.first_name}!
+
+Я помогу записаться на занятия английским.
+""",
         reply_markup=main_menu()
     )
 
-# =========================
-# Текстовые сообщения
-# =========================
+# =================================
+# Сообщения
+# =================================
 @bot.message_handler(func=lambda m: True)
 def handle_text(message):
+
     chat_id = message.chat.id
-    msg = message.text
+    text = message.text
 
-    if msg == "📝 Записаться":
-        bot.send_message(chat_id,"Выберите формат обучения:", reply_markup=signup_menu())
+    # Запись
+    if text == "📝 Записаться":
 
-    elif msg == "👩‍🏫 Офлайн":
-        user_data[chat_id] = {"state":"age_select","format":"офлайн"}
-        markup = types.InlineKeyboardMarkup(row_width=1)
+        markup = types.InlineKeyboardMarkup()
+
         for key, name in AGE_GROUPS.items():
             markup.add(types.InlineKeyboardButton(name, callback_data=f"age_{key}"))
-        bot.send_message(chat_id,"Выберите возрастную группу:", reply_markup=markup)
 
-    elif msg == "💻 Онлайн":
-        user_data[chat_id] = {"state":"name","format":"онлайн"}
-        bot.send_message(chat_id,"Введите ваше имя:")
+        bot.send_message(chat_id, "Выберите возраст:", reply_markup=markup)
 
-    elif msg == "👥 Программы":
-        text = "👥 ПРОГРАММЫ ОБУЧЕНИЯ\n\n"
-        for key, val in PROGRAMS.items():
-            text += f"{AGE_GROUPS[key]}: {val}\n"
-        bot.send_message(chat_id, text)
+    # Программы
+    elif text == "👥 Программы":
 
-    elif msg == "💰 Прайс":
-        text = "💰 ПРАЙС\n\n"
-        for key, val in PRICES.items():
-            text += f"{AGE_GROUPS[key]}: {val}\n"
-        bot.send_message(chat_id, text)
+        msg = "👥 Программы обучения\n\n"
 
-    elif msg == "📞 Контакты":
+        for key in PROGRAMS:
+            msg += f"{AGE_GROUPS[key]}\n{PROGRAMS[key]}\n\n"
+
+        bot.send_message(chat_id, msg)
+
+    # Прайс
+    elif text == "💰 Прайс":
+
+        msg = "💰 Стоимость\n\n"
+
+        for key in PRICES:
+            msg += f"{AGE_GROUPS[key]} — {PRICES[key]}\n"
+
+        bot.send_message(chat_id, msg)
+
+    # Контакты
+    elif text == "📞 Контакты":
+
         bot.send_message(chat_id, f"""
 📍 Адрес: {SCHOOL_INFO['address']}
 🏫 Кабинет: {SCHOOL_INFO['cabinet']}
@@ -211,77 +226,113 @@ def handle_text(message):
 📷 Instagram: @{SCHOOL_INFO['instagram']}
 """)
 
-    elif msg == "ℹ️ О школе":
+    # О школе
+    elif text == "ℹ️ О школе":
+
         bot.send_message(chat_id, """
-🏫 О школе English House
+🏫 О школе English Home
 
-Мы обучаем английскому детей, подростков и взрослых.
+Приветствую вас! Меня зовут Монгуш Чечек Шойовна.
 
-Занятия проходят в небольших группах с современными методиками обучения.  
-Развиваем разговорную речь, понимание языка и уверенность в английском.  
+Я учитель английского языка, тренер-педагог развития речи на английском языке по методике В.Н. Мещеряковой I Love English (ILE) с 2012 года, методист.
+
+Помогаю детям и взрослым заговорить на английском языке. Это возможно и это реально.
+
+Мы работаем по эмпирической системе I Love English.
+
+Автор методики В.Н. Мещерякова создала методику, которая копирует естественный процесс освоения родного языка.
+
+Сначала слушаем и понимаем, потом говорим, затем читаем и пишем.
+
+🔥 Почему это работает?
+Потому что это естественный процесс развития языка.
+
+❓ Кому подойдёт?
+
+Всем, кто готов слушать аудио каждый день и хочет говорить на английском языке.
 """)
 
-    elif msg == "⬅️ Назад":
-        bot.send_message(chat_id,"Главное меню", reply_markup=main_menu())
+    # Имя
+    elif chat_id in user_data and user_data[chat_id]["state"] == "name":
 
-    else:
-        if chat_id in user_data:
-            state = user_data[chat_id]["state"]
+        user_data[chat_id]["client_name"] = text
+        user_data[chat_id]["username"] = message.from_user.username
 
-            if state == "name":
-                user_data[chat_id]["client_name"] = msg
-                user_data[chat_id]["username"] = message.from_user.username
-                user_data[chat_id]["state"] = "phone"
-                bot.send_message(chat_id,"Введите ваш номер телефона:")
-
-            elif state == "phone":
-                user_data[chat_id]["phone"] = msg
-                user_data[chat_id]["age_group"] = "Онлайн"
-                user_data[chat_id]["program"] = "Онлайн обучение"
-                user_data[chat_id]["schedule"] = "Нужно обсудить по телефону"
-                app_id = save_application(chat_id, user_data[chat_id])
-                notify_admin(app_id, user_data[chat_id])
-                bot.send_message(chat_id,f"✅ Заявка #{app_id} отправлена! Мы скоро перезвоним.")
-                del user_data[chat_id]
-
-# =========================
-# Обработка inline кнопок
-# =========================
-@bot.callback_query_handler(func=lambda call: True)
-def handle_callback(call):
-    chat_id = call.message.chat.id
-    msg_id = call.message.message_id
-
-    if call.data.startswith("age_"):
-        key = call.data.replace("age_", "")
-        user_data[chat_id]["age_group"] = AGE_GROUPS[key]
-        user_data[chat_id]["program"] = PROGRAMS[key]
-        user_data[chat_id]["schedule"] = PRICES[key]
         user_data[chat_id]["state"] = "phone"
 
         bot.send_message(chat_id, "Введите номер телефона:")
 
-# =========================
-# Админ команды
-# =========================
+    # Телефон
+    elif chat_id in user_data and user_data[chat_id]["state"] == "phone":
+
+        user_data[chat_id]["phone"] = text
+
+        app_id = save_application(chat_id, user_data[chat_id])
+
+        notify_admin(app_id, user_data[chat_id])
+
+        bot.send_message(chat_id, f"✅ Заявка №{app_id} отправлена!")
+
+        del user_data[chat_id]
+
+# =================================
+# Кнопки возраста
+# =================================
+@bot.callback_query_handler(func=lambda call: True)
+def callback(call):
+
+    chat_id = call.message.chat.id
+
+    if call.data.startswith("age_"):
+
+        key = call.data.replace("age_", "")
+
+        user_data[chat_id] = {
+            "state": "name",
+            "age_group": AGE_GROUPS[key],
+            "program": PROGRAMS[key],
+            "schedule": PRICES[key]
+        }
+
+        bot.send_message(chat_id, "Введите ваше имя:")
+
+# =================================
+# Админ — последние заявки
+# =================================
 @bot.message_handler(commands=["apps"])
 def apps(message):
+
     if message.chat.id != ADMIN_CHAT_ID:
         return
-    conn = sqlite3.connect("english_house.db")
-    cursor = conn.cursor()
-    cursor.execute("SELECT id, client_name, phone, status FROM applications ORDER BY id DESC LIMIT 10")
-    rows = cursor.fetchall()
+
+    conn = sqlite3.connect("english_home.db")
+    cur = conn.cursor()
+
+    cur.execute("""
+    SELECT id, client_name, phone
+    FROM applications
+    ORDER BY id DESC
+    LIMIT 10
+    """)
+
+    rows = cur.fetchall()
+
     conn.close()
-    text = "📋 Последние заявки\n\n"
+
+    text = "Последние заявки\n\n"
+
     for r in rows:
-        text += f"#{r[0]}\n👤 {r[1]}\n📞 {r[2]}\nСтатус: {r[3]}\n\n"
+        text += f"#{r[0]}\n👤 {r[1]}\n📞 {r[2]}\n\n"
+
     bot.send_message(message.chat.id, text)
 
-# =========================
+# =================================
 # Запуск
-# =========================
+# =================================
 if __name__ == "__main__":
+
     threading.Thread(target=run_flask).start()
-    print("🚀 Bot started")
-    bot.infinity_polling(timeout=20, long_polling_timeout=10, none_stop=True, skip_pending=True)
+
+    print("Bot started")
+
+    bot.infinity_polling(skip_pending=True)
