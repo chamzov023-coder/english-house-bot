@@ -169,9 +169,10 @@ def start(message):
         f"""
 🏫 English Home
 
-Привет, {message.from_user.first_name}!
+Привет, {message.from_user.first_name}! 👋
+Добро пожаловать в English Home.
 
-Я помогу записаться на занятия английским.
+Помогу выбрать программу и записаться на занятия.
 """,
         reply_markup=main_menu()
     )
